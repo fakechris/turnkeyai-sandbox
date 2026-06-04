@@ -2,99 +2,83 @@
  * Apply a filesystem ACL policy on Windows.
  *
  * Reverse-engineered from
- * `packages/sandbox/src/windows-sandbox/apply-filesystem-acl-policy.ts`
- * .
+ * `packages/sandbox-exec/src/windows-sandbox/apply-filesystem-acl-policy.ts`.
  *
-/*  * gracefully.
+ * Thin orchestrator: walks the policy's `writableRoots` /
+ * `readableRoots` / `readOnlySubpaths` and asks the supplied
+ * {@link AclEditSession} to add/remove ACEs for each path that
+ * actually exists on disk. The actual FFI work
+ * (`SetEntriesInAclW` + `SetNamedSecurityInfoW`) lives in
+ * `legacy/acl-editor.ts` — this file is the policy walker only.
+ *
+ * On non-Windows hosts this function is unreachable: the
+ * `WindowsBackend.initialize()` guard at the caller throws before
+ * we get here.
  *
  * @public
  */
 
-import { resolve as pathResolve } from 'node:path';
-import type { WritableRoot } from '../protocol/writable-root.js';
-import { getWindowsFFI } from './ffi/index.js';
-import { getSandboxSid } from './sid-utils.js';
-import {
-    GRANT_ACCESS,
-    DACL_SECURITY_INFORMATION,
-    FILE_GENERIC_READ,
-    FILE_GENERIC_WRITE,
-    DELETE_ACCESS,
-    SE_FILE_OBJECT,
-    SUB_CONTAINERS_AND_OBJECTS_INHERIT,
-} from './ffi/koffi-bindings.js';
-import { isDirectoryLikeHardcodedDenyPath } from '../sandboxing/filesystem-policy.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import type { AclEditSession } from './legacy/acl-editor.js';
+import type { SandboxPolicy } from '../protocol/sandbox-policy.js';
 
 /** Public options. */
 export interface ApplyAclOptions {
     cwd?: string;
     homeDir?: string;
-    /** SID of the sandbox user (defaults to a per-cwd derived SID). */
+    /** SID of the sandbox user. Required. */
     sid?: string;
 }
 
-/** Apply the filesystem ACL policy to writable roots and hardcoded deny paths. */
+/**
+ * Apply the filesystem ACL policy described by `policy` via `session`.
+ *
+ * Walks:
+ * - `policy.filesystem.writableRoots[*]` → `session.addAllowWriteAce`
+ *   - `writableRoots[*].readOnlySubpaths[*]` → `session.addDenyWriteAce`
+ * - `policy.filesystem.readableRoots[*]` (that aren't already writable)
+ *   → `session.addAllowReadAce`
+ *
+ * Paths that don't exist on disk are silently skipped — Windows can
+ * only ACL paths that are present, and we don't want setup to fail
+ * when the policy mentions optional directories.
+ */
 export async function applyWindowsFilesystemAclPolicy(
-    writableRoots: readonly WritableRoot[],
+    session: AclEditSession,
+    policy: SandboxPolicy,
     options: ApplyAclOptions = {},
 ): Promise<void> {
-    if (process.platform !== 'win32') {
-        throw new Error(
-            `applyWindowsFilesystemAclPolicy requires win32 (current: ${process.platform})`,
+    const sidOpt = options.sid;
+    if (!sidOpt) {
+        throw new Error('applyWindowsFilesystemAclPolicy requires options.sid');
+    }
+    const sid: string = sidOpt;
+
+    async function addAclIfPathExists(
+        targetPath: string,
+        apply: (path: string, sid: string) => Promise<void>,
+    ): Promise<void> {
+        if (!existsSync(targetPath)) {
+            return;
+        }
+        await apply(targetPath, sid);
+    }
+
+    for (const writableRoot of policy.filesystem.writableRoots) {
+        await addAclIfPathExists(writableRoot.path, session.addAllowWriteAce);
+        for (const subpath of writableRoot.readOnlySubpaths) {
+            const readOnlyPath = join(writableRoot.path, subpath);
+            await addAclIfPathExists(readOnlyPath, session.addDenyWriteAce);
+        }
+    }
+
+    for (const readableRoot of policy.filesystem.readableRoots) {
+        const alreadyWritable = policy.filesystem.writableRoots.some(
+            (wr) => wr.path === readableRoot,
         );
-    }
-    const ffi = getWindowsFFI();
-    const sid = options.sid ?? getSandboxSid(options.cwd);
-
-    for (const root of writableRoots) {
-        const path = pathResolve(root.path);
-        // Allow the sandbox SID to read/write/delete.
-        ffi.setEntriesInAclW(1, [allowAce(sid, FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE_ACCESS)], null, null);
-        // (Full setNamedSecurityInfoW call with the populated ACL happens
-        // here; we elide the full struct plumbing in this skeleton — the
-        // real implementation walks EXPLICIT_ACCESS_W arrays, calls
-        // setEntriesInAclW, then SetNamedSecurityInfoW. See the
-        // for the verbatim version.)
-        void path;
-
-        // Per-subpath read-only override
-        for (const sub of root.readOnlySubpaths) {
-            const subPath = pathResolve(root.path, sub);
-            ffi.setEntriesInAclW(1, [allowAce(sid, FILE_GENERIC_READ)], null, null);
-            void subPath;
+        if (!alreadyWritable) {
+            await addAclIfPathExists(readableRoot, session.addAllowReadAce);
         }
     }
-
-    // Hardcoded-deny: apply to .git/.ssh/etc. when covered
-    for (const deny of candidateDenyPaths()) {
-        if (isDirectoryLikeHardcodedDenyPath(deny)) {
-            const abs = pathResolve(options.cwd ?? process.cwd(), deny);
-            ffi.setEntriesInAclW(
-                1,
-                [allowAce(sid, FILE_GENERIC_READ)],
-                null,
-                null,
-            );
-            // Mark deny for this SID (no-access ACE)
-            void abs;
-        }
-    }
-    void SE_FILE_OBJECT;
-    void SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-    void DACL_SECURITY_INFORMATION;
-    void GRANT_ACCESS;
-    // The above constants are exported for completeness; the real koffi struct
-    // assembly is non-trivial and is left for a Windows-CI-tested implementation
-    // (see lines 40403–40429 for the full version).
-}
-
-/** A minimal allow-ACE shim. The real implementation builds a full
- * EXPLICIT_ACCESS_W struct via koffi.struct. */
-function allowAce(sid: string, access: number): unknown {
-    return { sid, access, mode: GRANT_ACCESS };
-}
-
-/** Hardcoded deny paths to apply on Windows. */
-function candidateDenyPaths(): string[] {
-    return ['.git', '.ssh', '.codex', '.agents', '.gnupg', '.config/gcloud'];
 }

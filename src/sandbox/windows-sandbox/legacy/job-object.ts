@@ -20,7 +20,7 @@
  */
 
 import { getWindowsFFI } from '../ffi/index.js';
-import { JobObjectExtendedLimitInformation, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE } from '../ffi/koffi-bindings.js';
+import { JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE } from '../ffi/koffi-bindings.js';
 
 /** Total size of `JOBOBJECT_EXTENDED_LIMIT_INFORMATION` for the current arch. */
 function getExtendedLimitInformationSize(): number {
@@ -60,7 +60,7 @@ export async function createJobObject(): Promise<JobObject> {
     buf.writeUInt32LE(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, 16);
     const setOk = ffi.setInformationJobObject(
         jobHandle,
-        JobObjectExtendedLimitInformation,
+        JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
         buf,
         buf.length,
     );
@@ -94,3 +94,6 @@ export async function assignProcessToJob(jobHandle: unknown, processHandle: unkn
         throw new Error(`assignProcessToJobObject failed with error ${err}`);
     }
 }
+
+// getWindowsFFI is cached + sync; await is a no-op kept for signature compat.
+void Promise.resolve;
