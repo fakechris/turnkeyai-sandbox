@@ -166,6 +166,17 @@ export function getWindowsFFI(): WindowsFFI {
     const handle = koffi.opaque();
     const pHandle = koffi.out(koffi.pointer(handle));
     const pDword = koffi.out(koffi.pointer('uint32'));
+    // Opaque types for IN pointer args that callers pass as either null
+    // or a koffi-returned handle.
+    const pSid = koffi.pointer(koffi.opaque());
+    const pAcl = koffi.pointer(koffi.opaque());
+    // OUT pointer variants — wrap the bare pointer in `koffi.out()`
+    // so koffi writes the native output back into the caller's array.
+    // Without `out()`, koffi treats the arg as input-only and the
+    // caller's array slot stays at its initial value (null).
+    const pSidOut = koffi.out(koffi.pointer(koffi.opaque()));
+    const pAclOut = koffi.out(koffi.pointer(koffi.opaque()));
+    const pSecurityDescriptorOut = koffi.out(koffi.pointer(koffi.opaque()));
 
     // We bind lazily but re-cast to Win32Function for type-safety. The actual
     // call sites never inspect the return shape; they only care about success
@@ -206,24 +217,29 @@ export function getWindowsFFI(): WindowsFFI {
         lpwstr,
         'int',
         dword,
-        pVoid,
-        pVoid,
-        pVoid,
-        pVoid,
-        pVoid,
+        pSidOut,                  // owner — OUT
+        pSidOut,                  // group — OUT
+        pAclOut,                  // dacl — OUT
+        pSid,                     // sacl — IN (we pass null)
+        pSecurityDescriptorOut,   // securityDescriptor — OUT
     ]);
     const setNamedSecurityInfoW = bind('SetNamedSecurityInfoW', dword, [
         lpwstr,
         'int',
         dword,
-        pVoid,
-        pVoid,
-        pVoid,
-        pVoid,
+        pSid,    // owner — IN
+        pSid,    // group — IN
+        pAcl,    // dacl — IN
+        pAcl,    // sacl — IN
     ]);
-    const setEntriesInAclW = bind('SetEntriesInAclW', dword, [dword, pVoid, pVoid, pVoid]);
-    const convertStringSidToSidW = bind('ConvertStringSidToSidW', bool, [lpwstr, pVoid]);
-    const freeSid = bind('FreeSid', pVoid, [pVoid]);
+    const setEntriesInAclW = bind('SetEntriesInAclW', dword, [
+        dword,        // cCountOfExplicitEntries
+        pVoid,        // pListOfExplicitEntries (koffi.struct is JS-friendly)
+        pAcl,         // OldAcl — IN
+        pAclOut,      // NewAcl — OUT
+    ]);
+    const convertStringSidToSidW = bind('ConvertStringSidToSidW', bool, [lpwstr, pSid]);
+    const freeSid = bind('FreeSid', pVoid, [pSid]);
     // Process
     const createProcessAsUserW = bind('CreateProcessAsUserW', bool, [
         handle,
