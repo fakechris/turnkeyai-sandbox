@@ -18,17 +18,12 @@
  * downstream of `wrap()` (in `sandbox-manager.ts`); this backend is
  * responsible for OS-level setup + cleanup only.
  *
- * On non-Windows hosts, the backend's `wrap()` throws a clear error
- * for restricted/elevated requests; `sandboxType: 'none'` is allowed
- * as a POSIX passthrough (matches the macOS / Linux backends).
- *
  * @public
  */
 
 import { argvQuoteWindows } from '../../util/argv-quote.js';
 import { getPlatform } from '../../util/platform.js';
 import type { SandboxExecRequest } from '../sandboxing/exec-request.js';
-import type { SandboxCapabilities } from '../../types/result.js';
 import type { SandboxPolicy } from '../protocol/sandbox-policy.js';
 import type { SandboxType } from '../protocol/sandbox-type.js';
 import { createAclEditSession, type AclEditSession } from './legacy/acl-editor.js';
@@ -39,17 +34,17 @@ import { getSandboxSid } from './sid-utils.js';
 /** Windows sandbox type. */
 type WindowsSandboxType = 'windowsRestrictedToken' | 'windowsElevated';
 
-/** Capabilities of a Windows backend (static + dynamic union). */
-export interface WindowsBackendCapabilities extends SandboxCapabilities {
+/** Capabilities returned by the Windows backend. Matches Coze's shape exactly. */
+export interface WindowsBackendCapabilities {
     networkEnforced: boolean;
-    mitmSupported: boolean;
     readOnlySupported: boolean;
+    mitmSupported: boolean;
     violationStreamAvailable: boolean;
 }
 
 /**
  * WindowsBackend — owns the ACL session and (when in elevated mode) the
- * list of elevated-mode cleanups that need to run on `reset()`.
+ * list of elevated-mode cleanups that need to run on `reset()).
  */
 export class WindowsBackend {
     policy: SandboxPolicy | null;
@@ -64,74 +59,48 @@ export class WindowsBackend {
     /**
      * Wrap the exec request into a Windows-quoted command string.
      *
-     * For `windowsRestrictedToken` / `windowsElevated`: the actual
-     * restricted-token / elevated spawn is performed in
-     * `runInSandbox`, not here. The command line is identical to
-     * `none`, but the filesystem is already ACL-protected by
-     * `initialize()`.
-     *
-     * For `none`: POSIX passthrough (the macOS / Linux backends
-     * produce the same string for the same input).
+     * Matches Coze's control flow exactly:
+     * 1. `windowsElevated` → check setup state, then argvQuoteWindows
+     * 2. `windowsRestrictedToken` → argvQuoteWindows (ACL protection
+     *    is already set up by `initialize()`)
+     * 3. Any other type (including `'none'`) → argvQuoteWindows passthrough
      */
     wrap(req: SandboxExecRequest): string {
-        if (req.sandboxType === 'none') {
-            return req.argv.map(argvQuoteWindows).join(' ');
-        }
-        if (
-            req.sandboxType === 'windowsRestrictedToken' ||
-            req.sandboxType === 'windowsElevated'
-        ) {
-            if (process.platform !== 'win32') {
-                throw new Error(
-                    `WindowsBackend.wrap: ${req.sandboxType} requires win32 ` +
-                        `(current: ${process.platform}). Pass sandboxType:'none' for passthrough.`,
-                );
-            }
-            if (req.sandboxType === 'windowsElevated' && !isSetupVersionMatch()) {
+        if (req.sandboxType === 'windowsElevated') {
+            if (!isSetupVersionMatch()) {
                 throw new Error(
                     'Windows Elevated backend requires setup. Run `turnkeyai-sandbox setup-windows` first.',
                 );
             }
             return req.argv.map(argvQuoteWindows).join(' ');
         }
-        throw new Error(`WindowsBackend does not support sandboxType '${req.sandboxType}'`);
+        if (req.sandboxType === 'windowsRestrictedToken') {
+            return req.argv.map(argvQuoteWindows).join(' ');
+        }
+        // 'none' or unknown — passthrough with Windows quoting
+        return req.argv.map(argvQuoteWindows).join(' ');
     }
 
     /**
      * Return capabilities for the active sandbox type.
      *
-     * - `windowsElevated`: enforced network (firewall by SID), MITM
-     *   proxy supported, read-only mode supported, no ETW violation
-     *   stream yet.
-     * - `windowsRestrictedToken` / default: all dynamic fields false.
+     * Matches Coze's shape exactly (4 fields):
+     * - `windowsElevated`: network enforced, read-only supported, MITM supported
+     * - `windowsRestrictedToken` / default: all false
      */
     capabilities(): WindowsBackendCapabilities {
         if (this.sandboxType === 'windowsElevated') {
             return {
-                processIsolation: true,
-                syscallFilter: false,
-                resourceLimits: true, // via JobObject
-                dynamicPolicy: false,
-                hostProxy: true,
-                hardcodedDeny: true,
-                restrictedToken: true,
                 networkEnforced: true,
-                mitmSupported: true,
                 readOnlySupported: true,
+                mitmSupported: true,
                 violationStreamAvailable: false,
             };
         }
         return {
-            processIsolation: true,
-            syscallFilter: false,
-            resourceLimits: true,
-            dynamicPolicy: false,
-            hostProxy: true,
-            hardcodedDeny: true,
-            restrictedToken: true,
             networkEnforced: false,
-            mitmSupported: false,
             readOnlySupported: false,
+            mitmSupported: false,
             violationStreamAvailable: false,
         };
     }
@@ -148,8 +117,9 @@ export class WindowsBackend {
      * `initialize()` is only called on win32.
      */
     async initialize(policy: SandboxPolicy | null = null): Promise<void> {
-        if (policy) {
-            this.policy = policy;
+        const effectivePolicy = policy ?? this.policy;
+        if (effectivePolicy) {
+            this.policy = effectivePolicy;
         }
         if (!this.policy) {
             return;
@@ -163,9 +133,9 @@ export class WindowsBackend {
         this.aclSession = session;
 
         const cwd = process.cwd();
+        const sid = getSandboxSid(cwd);
         const homeDir =
             process.env.HOME ?? process.env.USERPROFILE ?? 'C:\\Users\\Default';
-        const sid = getSandboxSid(cwd);
         await applyWindowsFilesystemAclPolicy(session, this.policy, {
             cwd,
             homeDir,
@@ -204,11 +174,6 @@ export class WindowsBackend {
     /** Read the persisted setup state. Returns null if not set up. */
     getSetupState(): SetupState | null {
         return readSetupState();
-    }
-
-    /** True if setup-windows has never been run, or state is older than SETUP_VERSION. */
-    isSetupRequired(): boolean {
-        return !isSetupVersionMatch();
     }
 }
 

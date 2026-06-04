@@ -20,6 +20,7 @@
  */
 
 import { getWindowsFFI } from '../ffi/index.js';
+import { SandboxUnsupportedError } from '../../protocol/errors.js';
 import {
     CREATE_NO_WINDOW,
     CREATE_SUSPENDED,
@@ -175,7 +176,7 @@ export async function createProcessAsRestrictedToken(
     env: Record<string, string> | undefined,
 ): Promise<StartedWindowsProcess> {
     if (process.platform !== 'win32') {
-        throw new Error('createProcessAsRestrictedToken is only available on Windows');
+        throw new SandboxUnsupportedError('createProcessAsRestrictedToken is only available on Windows');
     }
     const ffi = await getWindowsFFI();
     const envBlock = buildWindowsEnvironmentBlock(env);

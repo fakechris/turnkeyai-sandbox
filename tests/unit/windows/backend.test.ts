@@ -17,43 +17,42 @@ describe('WindowsBackend', () => {
         expect(cmd).toBe(`"echo" "hello"`);
     });
 
-    it('wrap() on non-Windows throws for windowsRestrictedToken', () => {
-        if (process.platform === 'win32') {
-            return;
-        }
-        expect(() =>
-            windowsBackend.wrap({
-                sandboxType: 'windowsRestrictedToken',
-                argv: ['echo', 'hello'],
-                policy: {
-                    filesystem: { mode: 'readOnly', writableRoots: [], readableRoots: [] },
-                    network: { mode: 'open' },
-                },
-            }),
-        ).toThrow(/requires win32/);
+    it('wrap() with windowsRestrictedToken returns Windows-quoted command', () => {
+        const cmd = windowsBackend.wrap({
+            sandboxType: 'windowsRestrictedToken',
+            argv: ['echo', 'hello'],
+            policy: {
+                filesystem: { mode: 'readOnly', writableRoots: [], readableRoots: [] },
+                network: { mode: 'open' },
+            },
+        });
+        expect(cmd).toBe(`"echo" "hello"`);
     });
 
-    it('wrap() on non-Windows throws for windowsElevated', () => {
+    it('wrap() with windowsElevated throws when setup not done', () => {
         if (process.platform === 'win32') {
+            // On Windows this may or may not throw depending on setup state.
+            // Just verify it returns a string or throws — either is fine.
             return;
         }
+        // On non-Windows isSetupVersionMatch returns false → throws
         expect(() =>
             windowsBackend.wrap({
                 sandboxType: 'windowsElevated',
                 argv: ['echo', 'hello'],
-                policy: {
-                    filesystem: { mode: 'readOnly', writableRoots: [], readableRoots: [] },
-                    network: { mode: 'open' },
-                },
             }),
-        ).toThrow(/requires win32/);
+        ).toThrow(/setup-windows/);
     });
 
-    it('reports restrictedToken + resourceLimits capabilities', () => {
+    it('capabilities() returns Coze-shaped object (4 fields)', () => {
         const caps = windowsBackend.capabilities();
-        expect(caps.restrictedToken).toBe(true);
-        expect(caps.resourceLimits).toBe(true);
-        expect(caps.processIsolation).toBe(true);
+        // Coze's capabilities() returns exactly 4 fields
+        expect(caps.networkEnforced).toBe(false);
+        expect(caps.readOnlySupported).toBe(false);
+        expect(caps.mitmSupported).toBe(false);
+        expect(caps.violationStreamAvailable).toBe(false);
+        // Verify exactly 4 keys (no extra fields)
+        expect(Object.keys(caps)).toHaveLength(4);
     });
 
     it('selectSandboxType("win32", policy) returns a Windows type', () => {
