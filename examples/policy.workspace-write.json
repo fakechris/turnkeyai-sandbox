@@ -1,0 +1,13 @@
+{
+  "filesystem": {
+    "mode": "workspaceWrite",
+    "writableRoots": [
+      { "path": "$PWD", "readOnlySubpaths": [".git", "node_modules"] }
+    ],
+    "readableRoots": ["/usr/lib", "/opt/homebrew"],
+    "includePlatformDefaults": true
+  },
+  "network": {
+    "mode": "open"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "name": "@turnkeyai/sandbox",
+  "version": "0.1.0",
+  "description": "Cross-platform OS-level command sandbox: macOS Seatbelt / Linux bubblewrap / Windows JobObject+ACL. Includes a shell command policy engine, host-proxy, and a banned-prefix anti-bypass table.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/turkeyai/sandbox",
+  "keywords": [
+    "sandbox",
+    "bubblewrap",
+    "seatbelt",
+    "sbpl",
+    "sandbox-exec",
+    "llm",
+    "agent",
+    "tool-call",
+    "macos",
+    "linux",
+    "windows"
+  ],
+  "bin": {
+    "turnkeyai-sandbox": "dist/bin/turnkeyai-sandbox.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cli": {
+      "import": "./dist/cli/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/bin/turnkeyai-sandbox.js",
+    "dev": "tsx bin/turnkeyai-sandbox.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "test:all": "vitest run --reporter=verbose",
+    "demo": "tsx bin/turnkeyai-sandbox.ts",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "koffi": "^2.10.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5",
+    "tsx": "^4.19.2",
+    "@types/node": "^20.14.0"
+  }
+}

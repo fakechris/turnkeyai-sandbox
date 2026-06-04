@@ -1,0 +1,11 @@
+{
+  "filesystem": {
+    "mode": "readOnly",
+    "writableRoots": [],
+    "readableRoots": ["/tmp"],
+    "includePlatformDefaults": true
+  },
+  "network": {
+    "mode": "open"
+  }
+}

@@ -1,0 +1,62 @@
+NOTICE
+
+@turnkeyai/sandbox
+Copyright 2026 @turnkeyai/sandbox contributors
+
+This product includes software developed by third parties:
+
+────────────────────────────────────────────────────────────────────────────
+bubblewrap (LGPL-2.0)
+────────────────────────────────────────────────────────────────────────────
+
+  Project:    containers/bubblewrap
+  Homepage:   https://github.com/containers/bubblewrap
+  License:    GNU Library General Public License v2 only (LGPL-2.0)
+  License URL: https://www.gnu.org/licenses/old-licenses/lgpl-2.0.html
+  Used as:    external program (spawned via child_process.spawn)
+
+This product spawns `bwrap` (bubblewrap) as a separate OS process on
+Linux. We do NOT link against libbubblewrap, nor do we statically embed
+any of its source code. Per the LGPL-2.0:
+
+  • Section 0: "The act of running a program using the Library is not
+    restricted" — and the spawning of an external binary falls under
+    this section.
+
+  • Section 2: "Mere aggregation of another work not based on the
+    Library with the Library (or with a work based on the Library) on
+    a volume of a storage or distribution medium does not bring the
+    other work under the scope of this License."
+
+Therefore, using `bubblewrap` from this package does not impose any
+copyleft on `@turnkeyai/sandbox`. End users who wish to replace
+bubblewrap with an alternative (e.g. nsjail or firejail) may do so by
+setting their own `PATH` or by configuring their sandbox policy to
+target a different binary.
+
+────────────────────────────────────────────────────────────────────────────
+koffi (MIT)
+────────────────────────────────────────────────────────────────────────────
+
+  Project:    koffi
+  Homepage:   https://github.com/Koromix/koffi
+  License:    MIT
+  Used as:    runtime dependency, dynamically loaded only on Windows
+              hosts (koffi is installed but never imported on macOS /
+              Linux)
+
+────────────────────────────────────────────────────────────────────────────
+macOS sandbox-exec
+────────────────────────────────────────────────────────────────────────────
+
+  The macOS sandbox backend uses the system-provided `sandbox-exec`
+  binary (part of macOS). Apple does not require attribution; the SBPL
+  language is documented in Apple's sandbox(7) man page.
+
+────────────────────────────────────────────────────────────────────────────
+Windows JobObject / Win32 APIs
+────────────────────────────────────────────────────────────────────────────
+
+  The Windows sandbox backend uses Microsoft's Win32 APIs (JobObject,
+  Restricted Token, ACL editor, LogonUserW, etc.) via koffi. Microsoft
+  does not require attribution; the APIs are documented on MSDN.
