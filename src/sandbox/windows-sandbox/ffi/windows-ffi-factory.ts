@@ -85,7 +85,7 @@ export interface WindowsFFI {
     // Process
     createProcessAsUserW(
         token: unknown,
-        applicationName: string,
+        applicationName: string | null,
         commandLine: string,
         processAttributes: unknown,
         threadAttributes: unknown,
@@ -105,7 +105,7 @@ export interface WindowsFFI {
     // Elevated
     logonUserW(
         username: string,
-        domain: string,
+        domain: string | null,
         password: string,
         logonType: number,
         logonProvider: number,
@@ -113,10 +113,10 @@ export interface WindowsFFI {
     ): boolean;
     createProcessWithLogonW(
         username: string,
-        domain: string,
+        domain: string | null,
         password: string,
         logonFlags: number,
-        applicationName: string,
+        applicationName: string | null,
         commandLine: string,
         creationFlags: number,
         environment: unknown,
