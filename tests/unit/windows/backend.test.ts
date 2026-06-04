@@ -7,14 +7,14 @@ describe('WindowsBackend', () => {
         expect(isWindowsBackendAvailable()).toBe(process.platform === 'win32');
     });
 
-    it('wrap() with sandboxType "none" passthroughs', () => {
+    it('wrap() with sandboxType "none" returns Windows-quoted command', () => {
         const cmd = windowsBackend.wrap({
             sandboxType: 'none',
             argv: ['echo', 'hello'],
         });
-        // POSIX-safe args are passed through unquoted; this matches the
-        // macOS / Linux backend passthrough exactly.
-        expect(cmd).toBe(`echo hello`);
+        // Coze's WindowsBackend uses argvQuoteWindows for ALL sandbox
+        // types including 'none'. Safe args get double-quoted.
+        expect(cmd).toBe(`"echo" "hello"`);
     });
 
     it('wrap() on non-Windows throws for windowsRestrictedToken', () => {

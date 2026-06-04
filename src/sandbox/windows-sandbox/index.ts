@@ -25,7 +25,7 @@
  * @public
  */
 
-import { argvQuotePosix, argvQuoteWindows } from '../../util/argv-quote.js';
+import { argvQuoteWindows } from '../../util/argv-quote.js';
 import { getPlatform } from '../../util/platform.js';
 import type { SandboxExecRequest } from '../sandboxing/exec-request.js';
 import type { SandboxCapabilities } from '../../types/result.js';
@@ -75,7 +75,7 @@ export class WindowsBackend {
      */
     wrap(req: SandboxExecRequest): string {
         if (req.sandboxType === 'none') {
-            return req.argv.map(argvQuotePosix).join(' ');
+            return req.argv.map(argvQuoteWindows).join(' ');
         }
         if (
             req.sandboxType === 'windowsRestrictedToken' ||

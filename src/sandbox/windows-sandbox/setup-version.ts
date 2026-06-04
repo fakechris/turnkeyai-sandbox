@@ -19,8 +19,14 @@ export const SETUP_VERSION = 1;
 /** Persisted setup state. */
 export interface SetupState {
     version: number;
+    /** Timestamp when setup was run. */
     installedAt: number;
-    sid: string;
+    /** SID of the provisioned sandbox user account. */
+    accountSid: string;
+    /** Username of the provisioned sandbox account. */
+    accountName: string;
+    /** Base64-encoded password placeholder (v1 MVP; TODO: real DPAPI). */
+    encryptedPassword: string;
 }
 
 /** Path to setup-state.json. */

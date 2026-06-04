@@ -2,8 +2,7 @@
  * Lazy FFI factory: loads koffi + Win32 API bindings only on win32.
  *
  * Reverse-engineered from
- * `packages/sandbox/src/windows-sandbox/ffi/windows-ffi-factory.ts`
- * .
+ * `packages/sandbox-exec/src/windows-sandbox/ffi/windows-ffi-factory.ts`.
  *
  * On non-Windows hosts, {@link getWindowsFFI} throws synchronously. The
  * import of `koffi` itself is dynamic and only happens on first
@@ -13,7 +12,6 @@
  * @public
  */
 
-import { createRequire } from 'node:module';
 import * as koffiModule from 'koffi';
 
 /** A single Win32 function binding. */
@@ -28,6 +26,12 @@ export interface KoffiHandle {
     pointer(base?: unknown): unknown;
     struct(name: string, fields: Record<string, string | unknown>): unknown;
     out(type: unknown): unknown;
+}
+
+/** A loaded koffi DLL with a `.func()` method for binding. */
+interface KoffiLib {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    func(name: string, returnType: any, argTypes: readonly any[]): any;
 }
 
 /** Minimal interface for the FFI bundle (what `getWindowsFFI` returns). */
@@ -144,67 +148,80 @@ export function getWindowsFFI(): WindowsFFI {
                 `avoid an unconditional native dependency. Run on Windows to use the FFI.`,
         );
     }
-    // Dynamic require to avoid bundler static analysis pulling koffi.
-    // koffi is in `dependencies` (not peerDependencies) so it is always
-    // installed alongside the package.
     const koffi = koffiModule as unknown as KoffiHandle;
-    const _require = createRequire(import.meta.url);
 
-    // Bindings declaration (mirrors lines 39708–39800). On
-    // non-Windows hosts, the `koffi.load(...)` calls below would throw, but
-    // the platform guard above short-circuits first. The koffi handle in the
-    // callback paths is a no-op stub when this module is loaded on
-    // non-Windows.
-    const kernel32 = koffi.load('kernel32.dll');
-    const advapi32 = koffi.load('advapi32.dll');
-    void _require; // marker for tree-shaking
+    // ── Load DLLs ──────────────────────────────────────────────
+    const kernel32 = koffi.load('kernel32.dll') as unknown as KoffiLib;
+    const advapi32 = koffi.load('advapi32.dll') as unknown as KoffiLib;
+
+    // ── koffi type declarations ────────────────────────────────
+    // Matches Coze's createWindowsBindingTypes() exactly.
+    // handle = pointer to opaque (Win32 HANDLE is void*).
+    const handle = koffi.pointer(koffi.opaque());
+    const pSid = koffi.pointer(koffi.opaque());
+    const pAcl = koffi.pointer(koffi.opaque());
+    const pSecurityDescriptor = koffi.pointer(koffi.opaque());
+
+    const sidAndAttributes = koffi.struct('TRAE_SID_AND_ATTRIBUTES', {
+        Sid: pSid,
+        Attributes: 'uint32',
+    });
+    const trusteeW = koffi.struct('TRAE_TRUSTEE_W', {
+        pMultipleTrustee: 'void *',
+        MultipleTrusteeOperation: 'int',
+        TrusteeForm: 'int',
+        TrusteeType: 'int',
+        ptstrName: pSid,
+    });
+    const explicitAccessW = koffi.struct('TRAE_EXPLICIT_ACCESS_W', {
+        grfAccessPermissions: 'uint32',
+        grfAccessMode: 'int',
+        grfInheritance: 'uint32',
+        Trustee: trusteeW,
+    });
 
     const lpwstr = 'str16' as const;
     const bool = 'bool' as const;
     const dword = 'uint32' as const;
     const pVoid = 'void *' as const;
-    const handle = koffi.opaque();
     const pHandle = koffi.out(koffi.pointer(handle));
     const pDword = koffi.out(koffi.pointer('uint32'));
-    // Opaque types for IN pointer args that callers pass as either null
-    // or a koffi-returned handle.
-    const pSid = koffi.pointer(koffi.opaque());
-    const pAcl = koffi.pointer(koffi.opaque());
-    // OUT pointer variants — wrap the bare pointer in `koffi.out()`
-    // so koffi writes the native output back into the caller's array.
-    // Without `out()`, koffi treats the arg as input-only and the
-    // caller's array slot stays at its initial value (null).
-    const pSidOut = koffi.out(koffi.pointer(koffi.opaque()));
-    const pAclOut = koffi.out(koffi.pointer(koffi.opaque()));
-    const pSecurityDescriptorOut = koffi.out(koffi.pointer(koffi.opaque()));
+    const pSidOut = koffi.out(koffi.pointer(pSid));
+    const pAclOut = koffi.out(koffi.pointer(pAcl));
+    const pSecurityDescriptorOut = koffi.out(koffi.pointer(pSecurityDescriptor));
+    const pSidAndAttributes = koffi.pointer(sidAndAttributes);
+    const pExplicitAccessW = koffi.pointer(explicitAccessW);
 
-    // We bind lazily but re-cast to Win32Function for type-safety. The actual
-    // call sites never inspect the return shape; they only care about success
-    // (truthy return). The koffi API is dynamically typed at runtime, so we
-    // cast to the function signature once and treat the result as opaque.
-    // koffi's `.pointer()` and `.out()` return `unknown` at the TS level, so
-    // we coerce all return/arg types to `any` here — this is the one place
-    // we accept the FFI seam being untyped.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bind = (name: string, ret: any, args: readonly any[]): Win32Function =>
-        (koffi as any).func(name, ret, args);
+    const bind = (lib: KoffiLib, name: string, ret: any, args: readonly any[]): Win32Function =>
+        (lib as any).func(name, ret, args);
 
-    // Token
-    const openProcessToken = bind('OpenProcessToken', bool, [handle, dword, pHandle]);
-    const getCurrentProcess = bind('GetCurrentProcess', handle, []);
-    const createRestrictedToken = bind('CreateRestrictedToken', bool, [
+    // ── kernel32 bindings ──────────────────────────────────────
+    const getCurrentProcess = bind(kernel32, 'GetCurrentProcess', handle, []);
+    const closeHandle = bind(kernel32, 'CloseHandle', bool, [handle]);
+    const localFree = bind(kernel32, 'LocalFree', pVoid, [pVoid]);
+    const getLastError = bind(kernel32, 'GetLastError', dword, []);
+    const resumeThread = bind(kernel32, 'ResumeThread', dword, [handle]);
+    const waitForSingleObject = bind(kernel32, 'WaitForSingleObject', dword, [handle, dword]);
+    const getExitCodeProcess = bind(kernel32, 'GetExitCodeProcess', bool, [handle, pDword]);
+    const createJobObjectW = bind(kernel32, 'CreateJobObjectW', handle, [pVoid, pVoid]);
+    const setInformationJobObject = bind(kernel32, 'SetInformationJobObject', bool, [handle, 'int', pVoid, dword]);
+    const assignProcessToJobObject = bind(kernel32, 'AssignProcessToJobObject', bool, [handle, handle]);
+
+    // ── advapi32 bindings ──────────────────────────────────────
+    const openProcessToken = bind(advapi32, 'OpenProcessToken', bool, [handle, dword, pHandle]);
+    const createRestrictedToken = bind(advapi32, 'CreateRestrictedToken', bool, [
         handle,
         dword,
         dword,
-        pVoid,
+        pSidAndAttributes,
         dword,
         pVoid,
         dword,
-        pVoid,
+        pSidAndAttributes,
         pHandle,
     ]);
-    const duplicateTokenEx = bind('DuplicateTokenEx', bool, [
+    const duplicateTokenEx = bind(advapi32, 'DuplicateTokenEx', bool, [
         handle,
         dword,
         pVoid,
@@ -212,36 +229,34 @@ export function getWindowsFFI(): WindowsFFI {
         'int',
         pHandle,
     ]);
-    // ACL
-    const getNamedSecurityInfoW = bind('GetNamedSecurityInfoW', dword, [
+    const getNamedSecurityInfoW = bind(advapi32, 'GetNamedSecurityInfoW', dword, [
         lpwstr,
         'int',
         dword,
-        pSidOut,                  // owner — OUT
-        pSidOut,                  // group — OUT
-        pAclOut,                  // dacl — OUT
-        pSid,                     // sacl — IN (we pass null)
-        pSecurityDescriptorOut,   // securityDescriptor — OUT
+        pSidOut,                   // owner — OUT
+        pSidOut,                   // group — OUT
+        pAclOut,                   // dacl — OUT
+        pAclOut,                   // sacl — OUT
+        pSecurityDescriptorOut,    // securityDescriptor — OUT
     ]);
-    const setNamedSecurityInfoW = bind('SetNamedSecurityInfoW', dword, [
+    const setNamedSecurityInfoW = bind(advapi32, 'SetNamedSecurityInfoW', dword, [
         lpwstr,
         'int',
         dword,
-        pSid,    // owner — IN
-        pSid,    // group — IN
-        pAcl,    // dacl — IN
-        pAcl,    // sacl — IN
+        pSid,
+        pSid,
+        pAcl,
+        pAcl,
     ]);
-    const setEntriesInAclW = bind('SetEntriesInAclW', dword, [
-        dword,        // cCountOfExplicitEntries
-        pVoid,        // pListOfExplicitEntries (koffi.struct is JS-friendly)
-        pAcl,         // OldAcl — IN
-        pAclOut,      // NewAcl — OUT
+    const setEntriesInAclW = bind(advapi32, 'SetEntriesInAclW', dword, [
+        dword,
+        pExplicitAccessW,
+        pAcl,
+        pAclOut,
     ]);
-    const convertStringSidToSidW = bind('ConvertStringSidToSidW', bool, [lpwstr, pSid]);
-    const freeSid = bind('FreeSid', pVoid, [pSid]);
-    // Process
-    const createProcessAsUserW = bind('CreateProcessAsUserW', bool, [
+    const convertStringSidToSidW = bind(advapi32, 'ConvertStringSidToSidW', bool, [lpwstr, pSidOut]);
+    const freeSid = bind(advapi32, 'FreeSid', pVoid, [pSid]);
+    const createProcessAsUserW = bind(advapi32, 'CreateProcessAsUserW', bool, [
         handle,
         lpwstr,
         lpwstr,
@@ -254,15 +269,8 @@ export function getWindowsFFI(): WindowsFFI {
         pVoid,
         pVoid,
     ]);
-    const closeHandle = bind('CloseHandle', bool, [handle]);
-    const localFree = bind('LocalFree', pVoid, [pVoid]);
-    const getLastError = bind('GetLastError', dword, []);
-    const resumeThread = bind('ResumeThread', dword, [handle]);
-    const waitForSingleObject = bind('WaitForSingleObject', dword, [handle, dword]);
-    const getExitCodeProcess = bind('GetExitCodeProcess', bool, [handle, pDword]);
-    // Elevated
-    const logonUserW = bind('LogonUserW', bool, [lpwstr, lpwstr, lpwstr, dword, dword, pHandle]);
-    const createProcessWithLogonW = bind('CreateProcessWithLogonW', bool, [
+    const logonUserW = bind(advapi32, 'LogonUserW', bool, [lpwstr, lpwstr, lpwstr, dword, dword, pHandle]);
+    const createProcessWithLogonW = bind(advapi32, 'CreateProcessWithLogonW', bool, [
         lpwstr,
         lpwstr,
         lpwstr,
@@ -275,13 +283,6 @@ export function getWindowsFFI(): WindowsFFI {
         pVoid,
         pVoid,
     ]);
-    // Job object
-    const createJobObjectW = bind('CreateJobObjectW', handle, [pVoid, pVoid]);
-    const setInformationJobObject = bind('SetInformationJobObject', bool, [handle, 'int', pVoid, dword]);
-    const assignProcessToJobObject = bind('AssignProcessToJobObject', bool, [handle, handle]);
-
-    void kernel32;
-    void advapi32;
 
     cached = {
         openProcessToken: openProcessToken as unknown as WindowsFFI['openProcessToken'],
