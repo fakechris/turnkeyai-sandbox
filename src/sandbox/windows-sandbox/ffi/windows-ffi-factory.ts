@@ -1,13 +1,14 @@
 /**
- * Lazy FFI factory: loads koffi + Win32 API bindings only on win32.
+ * FFI factory: loads Win32 API bindings via koffi.
  *
  * Reverse-engineered from
  * `packages/sandbox-exec/src/windows-sandbox/ffi/windows-ffi-factory.ts`.
  *
- * On non-Windows hosts, {@link getWindowsFFI} throws synchronously. The
- * import of `koffi` itself is dynamic and only happens on first
- * {@link getWindowsFFI} call — so non-Windows `npm install` is fast and
- * koffi is never loaded.
+ * On non-Windows hosts, {@link getWindowsFFI} throws synchronously.
+ * koffi is imported statically (it's in `dependencies`) — on non-Windows
+ * hosts the native module is loaded but never called. Coze uses webpack
+ * lazy-loading (`__webpack_require__.t`) to defer the import; we rely on
+ * the static import since koffi is always installed.
  *
  * @public
  */
