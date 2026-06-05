@@ -14,6 +14,7 @@
  */
 
 import * as koffiModule from 'koffi';
+import { SandboxUnsupportedError } from '../../protocol/errors.js';
 
 /** A single Win32 function binding. */
 export type Win32Function = (...args: never[]) => unknown;
@@ -143,10 +144,8 @@ export async function getWindowsFFI(): Promise<WindowsFFI> {
         return cached;
     }
     if (process.platform !== 'win32') {
-        throw new Error(
-            `Windows FFI requires win32 (current platform: ${process.platform}). ` +
-                `This is a known limitation — the koffi bindings are loaded lazily to ` +
-                `avoid an unconditional native dependency. Run on Windows to use the FFI.`,
+        throw new SandboxUnsupportedError(
+            `Windows FFI is only available on Windows (current platform: ${process.platform}).`,
         );
     }
     const koffi = koffiModule as unknown as KoffiHandle;
