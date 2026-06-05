@@ -94,6 +94,3 @@ export async function assignProcessToJob(jobHandle: unknown, processHandle: unkn
         throw new Error(`assignProcessToJobObject failed with error ${err}`);
     }
 }
-
-// getWindowsFFI is cached + sync; await is a no-op kept for signature compat.
-void Promise.resolve;

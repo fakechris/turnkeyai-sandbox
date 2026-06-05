@@ -27,14 +27,7 @@ import {
     GRANT_ACCESS,
     SE_FILE_OBJECT,
     SUB_CONTAINERS_AND_OBJECTS_INHERIT,
-} from '../ffi/koffi-bindings.js';
-
-// getWindowsFFI returns synchronously (cached), but we keep the
-// signature async to match the Coze contract for future cross-process
-// caching. Awaiting the cached value is a no-op.
-void Promise.resolve;
-
-/** A captured DACL snapshot. */
+} from '../ffi/koffi-bindings.js';/** A captured DACL snapshot. */
 interface DaclSnapshot {
     dacl: unknown;
     securityDescriptor: unknown;

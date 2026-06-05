@@ -44,7 +44,7 @@ export interface WindowsBackendCapabilities {
 
 /**
  * WindowsBackend — owns the ACL session and (when in elevated mode) the
- * list of elevated-mode cleanups that need to run on `reset()).
+ * list of elevated-mode cleanups that need to run on `reset()`.
  */
 export class WindowsBackend {
     policy: SandboxPolicy | null;

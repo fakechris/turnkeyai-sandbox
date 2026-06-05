@@ -137,8 +137,8 @@ export interface WindowsFFI {
 
 let cached: WindowsFFI | undefined;
 
-/** Lazily load the koffi bindings. Throws on non-Windows hosts. */
-export function getWindowsFFI(): WindowsFFI {
+/** Lazily load the koffi bindings. Rejects on non-Windows hosts. */
+export async function getWindowsFFI(): Promise<WindowsFFI> {
     if (cached) {
         return cached;
     }

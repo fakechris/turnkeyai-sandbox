@@ -99,7 +99,7 @@ export class SandboxManager {
             return windowsBackend.wrap(req);
         }
         // 'none' (passthrough)
-        return req.argv.map((a) => a).join(' ');
+        return req.argv.join(' ');
     }
 
     /**

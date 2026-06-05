@@ -7,6 +7,34 @@
 > The Coze source paths are `packages/sandbox-exec/src/windows-sandbox/*`
 > per the `// CONCATENATED MODULE` headers in the bundle.
 
+## ⚠️ STATUS: ALL FINDINGS RESOLVED (commits `b16675c`–`7dd6102`)
+
+This report was generated on 2026-06-04. **All 6 HIGH/MEDIUM findings and most
+LOW findings have been fixed** in subsequent commits. The body of the report
+is preserved for historical context — see the "Resolution" annotation at each
+finding for the fix commit.
+
+| # | Severity | Finding | Status | Resolved in |
+|---|---|---|---|---|
+| 1 | HIGH | `apply-filesystem-acl-policy.ts` was a stub (fake ACEs, never called `setNamedSecurityInfoW`) | ✅ Fixed | `b16675c` |
+| 2 | HIGH | `index.ts` WindowsBackend was a stub (`argvQuotePosix` passthrough, no `initialize()`/`reset()`) | ✅ Fixed | `b16675c` |
+| 3 | MEDIUM | `sid-utils.ts` produced structurally different SIDs (1+fixed+2 vs Coze's 4 sub-authorities) | ✅ Fixed | `b16675c` |
+| 4 | LOW | `koffi-bindings.ts` had 24 unused constants | ✅ Fixed | `b16675c` |
+| 5 | LOW | `JOB_OBJECT_EXTENDED_LIMIT_INFORMATION` was renamed from Coze's UPPER_CASE | ✅ Fixed | `b16675c` |
+| 6 | LOW | `capabilities()` returned 11 fields vs Coze's 4 | ✅ Fixed | `7dd6102` |
+| 7 | CRITICAL | `bind()` called `koffi.func()` instead of `lib.func()` — all FFI dead at runtime | ✅ Fixed | `b45291a` |
+| 8 | CRITICAL | `ConvertStringSidToSidW` sid param missing `koffi.out()` | ✅ Fixed | `b45291a` |
+| 9 | CRITICAL | `GetNamedSecurityInfoW` 7th param (sacl) wrong type + no `out()` | ✅ Fixed | `b45291a` |
+| 10 | MEDIUM | 6 OUT parameters in FFI factory used `pVoid` instead of `koffi.out()` wrappers | ✅ Fixed | `108dfe6` |
+
+**Remaining intentional divergences (NOT bugs):**
+- Brand names: `turnkeyai-sandbox` vs `coze-sandbox` (setup path, firewall rule prefix)
+- `koffi` is statically imported (in `dependencies`) — Coze uses webpack lazy-loading
+- `getWindowsFFI` signature is now `async` (was sync with `void Promise.resolve;` markers)
+- Defensive guards added in `buildWindowsEnvironmentBlock` (null env), `applyWindowsFilesystemAclPolicy` (missing sid)
+
+## Summary
+
 ## Summary
 
 | Module | Files | Status | Risk |

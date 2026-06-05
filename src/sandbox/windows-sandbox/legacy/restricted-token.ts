@@ -152,9 +152,6 @@ export async function createRestrictedToken(sandboxSid?: string): Promise<Restri
     };
 }
 
-// getWindowsFFI is cached + sync; await is a no-op kept for signature compat.
-void Promise.resolve;
-
 /** Result of a successfully started Windows process. */
 export interface StartedWindowsProcess {
     processHandle: unknown;

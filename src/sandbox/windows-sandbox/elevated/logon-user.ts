@@ -108,9 +108,6 @@ export async function logonSandboxUser(
     };
 }
 
-// getWindowsFFI is cached + sync; await is a no-op kept for signature compat.
-void Promise.resolve;
-
 /**
  * Spawn `commandLine` as the sandbox user via `CreateProcessWithLogonW`.
  * Uses `LOGON_WITH_PROFILE` to load the user's profile (faster subsequent

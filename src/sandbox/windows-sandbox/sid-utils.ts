@@ -20,15 +20,10 @@
  * that `setup-state.json` files written by either are
  * interchangeable).
  *
- * Also exposes the `convertStringSidToSid` / `freeSid` helpers used
- * by `legacy/acl-editor.ts` callers that build a `TOKEN_USER`-shaped
- * argument from a string SID.
- *
  * @public
  */
 
 import { createHash } from 'node:crypto';
-import { getWindowsFFI } from './ffi/index.js';
 
 /**
  * Fixed low-privilege SID used when no cwd is provided.
@@ -70,33 +65,3 @@ export function getSandboxSid(cwd?: string): string {
     }
     return SANDBOX_FIXED_SID;
 }
-
-/**
- * Convert a string SID (e.g. `"S-1-5-21-..."`) to a binary SID
- * pointer suitable for Win32 APIs that take a `PSID`.
- *
- * The caller is responsible for calling {@link freeSid} when done.
- */
-export async function convertStringSidToSid(sidString: string): Promise<unknown> {
-    const ffi = await getWindowsFFI();
-    const sidOut: unknown[] = [null];
-    const ok = ffi.convertStringSidToSidW(sidString, sidOut);
-    if (!ok) {
-        const err = ffi.getLastError();
-        throw new Error(
-            `convertStringSidToSidW failed for "${sidString}" with error ${err}`,
-        );
-    }
-    return sidOut[0];
-}
-
-/**
- * Free a SID pointer previously returned by {@link convertStringSidToSid}.
- */
-export async function freeSid(sid: unknown): Promise<void> {
-    const ffi = await getWindowsFFI();
-    ffi.freeSid(sid);
-}
-
-// getWindowsFFI is cached + sync; await is a no-op kept for signature compat.
-void Promise.resolve;
